@@ -4,7 +4,7 @@ import org.example.mendel_challenge.transaction.domain.Transaction;
 
 import java.util.Optional;
 
-public interface TransactionRepositoryInterface {
+public interface TransactionRepository {
 
     Optional<Transaction> saveIfAbsent(Transaction transaction);
 }

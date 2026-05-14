@@ -8,7 +8,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Repository
-public class InMemoryTransactionRepository implements TransactionRepositoryInterface {
+public class InMemoryTransactionRepository implements TransactionRepository {
     private final Map<Long, Transaction> transactionById = new ConcurrentHashMap<>();
 
     @Override
