@@ -1,4 +1,0 @@
-org\example\mendel_challenge\transaction\repository\TransactionRepositoryInterface.class
-org\example\mendel_challenge\transaction\dto\TransactionRequestDTO.class
-org\example\mendel_challenge\transaction\exceptions\TransactionAlreadyExistsException.class
-org\example\mendel_challenge\transaction\dto\StatusResponse.class
