@@ -11,6 +11,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+
 @RestController
 @RequestMapping("/transactions")
 @RequiredArgsConstructor
@@ -36,5 +40,17 @@ public class TransactionController {
         transactionService.save(transaction);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(StatusResponse.ok());
+    }
+
+    @GetMapping("/types/{type}")
+    public ResponseEntity<List<Long>> getTransactionsByType(
+            @PathVariable String type
+    ) {
+        log.info("Getting transactions with type: {}", type);
+
+        Set<Long> transactionsByType = transactionService.getTransactionsByType(type);
+
+        return ResponseEntity.ok(new ArrayList<>(transactionsByType));
+
     }
 }

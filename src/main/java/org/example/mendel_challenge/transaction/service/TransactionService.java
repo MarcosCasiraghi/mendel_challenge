@@ -7,6 +7,7 @@ import org.example.mendel_challenge.transaction.repository.TransactionRepository
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -21,5 +22,9 @@ public class TransactionService {
             throw new TransactionAlreadyExistsException(transaction.getId());
         }
         return transaction;
+    }
+
+    public Set<Long> getTransactionsByType(String type) {
+        return repository.getTransactionsByType(type);
     }
 }

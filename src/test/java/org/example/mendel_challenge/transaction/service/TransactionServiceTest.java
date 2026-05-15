@@ -12,6 +12,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -65,5 +66,28 @@ class TransactionServiceTest {
                 .hasMessageContaining("1");
 
         verify(repository).saveIfAbsent(sampleTransaction);
+    }
+
+    @Test
+    @DisplayName("getTransactionsByType() returns the ids reported by the repository")
+    void getTransactionsByType_returnsIdsFromRepository() {
+        Set<Long> ids = Set.of(10L, 11L, 12L);
+        when(repository.getTransactionsByType("cars")).thenReturn(ids);
+
+        Set<Long> result = transactionService.getTransactionsByType("cars");
+
+        assertThat(result).containsExactlyInAnyOrder(10L, 11L, 12L);
+        verify(repository).getTransactionsByType("cars");
+    }
+
+    @Test
+    @DisplayName("getTransactionsByType() returns an empty set when the repository has no match")
+    void getTransactionsByType_returnsEmpty_whenRepositoryHasNoMatch() {
+        when(repository.getTransactionsByType("unknown")).thenReturn(Set.of());
+
+        Set<Long> result = transactionService.getTransactionsByType("unknown");
+
+        assertThat(result).isEmpty();
+        verify(repository).getTransactionsByType("unknown");
     }
 }

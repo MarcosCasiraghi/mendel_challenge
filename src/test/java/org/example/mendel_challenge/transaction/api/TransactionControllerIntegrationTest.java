@@ -12,7 +12,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasSize;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -30,12 +33,18 @@ class TransactionControllerIntegrationTest {
 
     /**
      * The in-memory repository is shared across the Spring context, so each test
-     * uses a unique id to stay isolated from siblings.
+     * uses a unique id (and, for GET-by-type tests, a unique type) to stay isolated
+     * from siblings.
      */
     private static final AtomicLong ID_GENERATOR = new AtomicLong(1000);
+    private static final AtomicLong TYPE_GENERATOR = new AtomicLong();
 
     private long nextId() {
         return ID_GENERATOR.incrementAndGet();
+    }
+
+    private String nextType(String prefix) {
+        return prefix + "-" + TYPE_GENERATOR.incrementAndGet();
     }
 
     @Test
@@ -144,5 +153,70 @@ class TransactionControllerIntegrationTest {
                         .content("{ this is not valid json"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(containsString("Malformed JSON")));
+    }
+
+    @Test
+    @DisplayName("GET /transactions/types/{type} returns 200 and every id stored under that type")
+    void getByType_returnsAllIds() throws Exception {
+        String type = nextType("cars");
+        long firstId  = nextId();
+        long secondId = nextId();
+        long thirdId  = nextId();
+
+        putTransaction(firstId,  100, type);
+        putTransaction(secondId, 200, type);
+        putTransaction(thirdId,  300, type);
+
+        mockMvc.perform(get("/transactions/types/{type}", type))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$", hasSize(3)))
+                .andExpect(jsonPath("$", containsInAnyOrder(
+                        (int) firstId, (int) secondId, (int) thirdId
+                )));
+    }
+
+    @Test
+    @DisplayName("GET /transactions/types/{type} returns 200 and an empty array when no transactions match")
+    void getByType_returnsEmptyArray_whenNoMatch() throws Exception {
+        String type = nextType("unknown");
+
+        mockMvc.perform(get("/transactions/types/{type}", type))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$", hasSize(0)));
+    }
+
+    @Test
+    @DisplayName("GET /transactions/types/{type} returns only ids of the requested type")
+    void getByType_returnsOnlyMatchingType() throws Exception {
+        String carsType = nextType("cars");
+        String shoppingType = nextType("shopping");
+        long carsId      = nextId();
+        long shoppingId  = nextId();
+
+        putTransaction(carsId,     500, carsType);
+        putTransaction(shoppingId, 600, shoppingType);
+
+        mockMvc.perform(get("/transactions/types/{type}", carsType))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0]").value((int) carsId));
+
+        mockMvc.perform(get("/transactions/types/{type}", shoppingType))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0]").value((int) shoppingId));
+    }
+
+    private void putTransaction(long id, double amount, String type) throws Exception {
+        String body = objectMapper.writeValueAsString(Map.of(
+                "amount", amount,
+                "type", type
+        ));
+        mockMvc.perform(put("/transactions/{transaction_id}", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated());
     }
 }

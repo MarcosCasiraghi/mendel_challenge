@@ -36,7 +36,7 @@ org.example.mendel_challenge
     │   └──TransactionAlreadyExistsException.java
     ├── repository
     │   ├──InMemoryTransactionRepository.java
-    │   └──TransactionRepositoryInterface.java
+    │   └──TransactionRepository.java
     ├── service
         └──TransactionService.java
 ```
@@ -49,6 +49,10 @@ org.example.mendel_challenge
 ### Thread safety and atomic insertion
 
 The in-memory store relies on `ConcurrentHashMap` and performs writes through `Map#putIfAbsent`, which checks and inserts atomically. This prevents a race condition in which two concurrent requests with the same id could both pass a separate existence check and both insert. The repository returns an `Optional<Transaction>` from `saveIfAbsent` so callers can distinguish "newly inserted" from "already existed".
+
+### Indexed lookups by type
+
+Listing transactions by type is served from a secondary index (`Map<String, Set<Long>>`) maintained inside the repository on every successful insert. This turns `GET /transactions/types/{type}` into an O(1) map lookup instead of an O(n) scan of every stored transaction, at the cost of a small write-time bookkeeping step. The index is only updated when `putIfAbsent` actually accepts the transaction, so duplicate writes never pollute it.
 
 ### DTOs separated from the domain
 
@@ -105,11 +109,33 @@ Responses:
 | `409 Conflict`    | error message           | A transaction with the same id already exists |
 | `400 Bad Request` | field-error map or text | Validation failed or the body was malformed   |
 
+### `GET /transactions/types/{type}`
+
+Returns the ids of every transaction stored under the given type.
+
+Response body is a JSON array of transaction ids:
+
+```json
+[10, 11, 12]
+```
+
+| Status   | Body            | Meaning                                                                |
+|----------|-----------------|------------------------------------------------------------------------|
+| `200 OK` | `[long, ...]`   | List of matching ids (empty array if no transaction has that type)     |
+
+The type segment is treated as an exact, case-sensitive match. An unknown type returns `200 OK` with `[]` rather than `404`, which keeps the contract uniform for callers that just want to enumerate ids.
+
 ## Testing
 
 The project ships with two layers of tests:
 
-- **Unit tests** — `TransactionServiceTest` mocks the repository with Mockito to validate the service behaviour in isolation (success and duplicate-id cases). `InMemoryTransactionRepositoryTest` exercises the repository directly with plain JUnit.
-- **Integration tests** — `TransactionControllerIntegrationTest` uses `@SpringBootTest` + `MockMvc` to exercise `PUT /transactions/{transaction_id}` end-to-end. Covered scenarios: happy path, duplicate id, missing required fields, optional `parent_id`, snake_case mapping, and malformed JSON.
+- **Unit tests** — `TransactionServiceTest` mocks the repository with Mockito to validate the service behaviour in isolation, covering save success, the duplicate-id failure path, delegation of `getTransactionsByType`, and the empty-match case. `InMemoryTransactionRepositoryTest` exercises the repository directly with plain JUnit: insertion semantics, duplicate-id handling, returning every id for a given type, isolation between types, case sensitivity of the type key, and the guarantee that a rejected duplicate does not leak into the type index.
+- **Integration tests** — `TransactionControllerIntegrationTest` uses `@SpringBootTest` + `MockMvc` to exercise both endpoints end-to-end. `PUT /transactions/{transaction_id}` is covered for the happy path, duplicate id, missing required fields, optional `parent_id`, snake_case mapping, and malformed JSON. `GET /transactions/types/{type}` is covered for the multi-id happy path, the empty-result case, type isolation across two coexisting types, and the literal example from the spec (`PUT /transactions/10 { "amount": 5000, "type": "cars" }` → `GET /transactions/types/cars` ⇒ `[10]`). Because the in-memory repository bean is shared across the Spring context, tests draw ids and types from atomic counters to stay isolated from each other.
+
+Run the full suite with:
+
+```bash
+./mvnw test
+```
 
 
