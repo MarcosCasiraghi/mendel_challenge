@@ -105,4 +105,11 @@ Responses:
 | `409 Conflict`    | error message           | A transaction with the same id already exists |
 | `400 Bad Request` | field-error map or text | Validation failed or the body was malformed   |
 
+## Testing
+
+The project ships with two layers of tests:
+
+- **Unit tests** — `TransactionServiceTest` mocks the repository with Mockito to validate the service behaviour in isolation (success and duplicate-id cases). `InMemoryTransactionRepositoryTest` exercises the repository directly with plain JUnit.
+- **Integration tests** — `TransactionControllerIntegrationTest` uses `@SpringBootTest` + `MockMvc` to exercise `PUT /transactions/{transaction_id}` end-to-end. Covered scenarios: happy path, duplicate id, missing required fields, optional `parent_id`, snake_case mapping, and malformed JSON.
+
 
