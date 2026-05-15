@@ -2,6 +2,7 @@ package org.example.mendel_challenge.transaction.service;
 
 import org.example.mendel_challenge.transaction.domain.Transaction;
 import org.example.mendel_challenge.transaction.exceptions.TransactionAlreadyExistsException;
+import org.example.mendel_challenge.transaction.exceptions.TransactionDoesNotExistException;
 import org.example.mendel_challenge.transaction.repository.TransactionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -16,6 +17,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -89,5 +91,31 @@ class TransactionServiceTest {
 
         assertThat(result).isEmpty();
         verify(repository).getTransactionsByType("unknown");
+    }
+
+    @Test
+    @DisplayName("getTransactionsSum() returns the value computed by the repository when the root exists")
+    void getTransactionsSum_returnsSumFromRepository_whenRootExists() {
+        when(repository.getTransactionById(10L)).thenReturn(Optional.of(sampleTransaction));
+        when(repository.getTransactionsSum(10L)).thenReturn(20000.0);
+
+        double sum = transactionService.getTransactionsSum(10L);
+
+        assertThat(sum).isEqualTo(20000.0);
+        verify(repository).getTransactionById(10L);
+        verify(repository).getTransactionsSum(10L);
+    }
+
+    @Test
+    @DisplayName("getTransactionsSum() throws TransactionDoesNotExistException when the root id is unknown")
+    void getTransactionsSum_throws_whenRootDoesNotExist() {
+        when(repository.getTransactionById(9999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> transactionService.getTransactionsSum(9999L))
+                .isInstanceOf(TransactionDoesNotExistException.class)
+                .hasMessageContaining("9999");
+
+        verify(repository).getTransactionById(9999L);
+        verify(repository, never()).getTransactionsSum(9999L);
     }
 }

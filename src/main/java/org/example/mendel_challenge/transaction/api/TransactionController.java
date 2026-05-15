@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.mendel_challenge.transaction.domain.Transaction;
 import org.example.mendel_challenge.transaction.dto.StatusResponse;
+import org.example.mendel_challenge.transaction.dto.SumResponse;
 import org.example.mendel_challenge.transaction.dto.TransactionRequestDTO;
 import org.example.mendel_challenge.transaction.service.TransactionService;
 import org.springframework.http.HttpStatus;
@@ -51,6 +52,17 @@ public class TransactionController {
         Set<Long> transactionsByType = transactionService.getTransactionsByType(type);
 
         return ResponseEntity.ok(new ArrayList<>(transactionsByType));
+    }
+
+    @GetMapping("/sum/{transaction_id}")
+    public ResponseEntity<SumResponse> getTransactionsSum(
+            @PathVariable("transaction_id") long transactionId
+    ) {
+        log.info("Getting sum of transactions rooted at id: {}", transactionId);
+
+        double sum = transactionService.getTransactionsSum(transactionId);
+
+        return ResponseEntity.ok(new SumResponse(sum));
 
     }
 }

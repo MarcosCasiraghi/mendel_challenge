@@ -7,7 +7,11 @@ import java.util.Set;
 
 public interface TransactionRepository {
 
+    Optional<Transaction> getTransactionById(long transactionId);
+
     Optional<Transaction> saveIfAbsent(Transaction transaction);
 
     Set<Long> getTransactionsByType(String type);
+
+    double getTransactionsSum(long transactionId);
 }

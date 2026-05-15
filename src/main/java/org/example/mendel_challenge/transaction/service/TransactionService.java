@@ -3,6 +3,7 @@ package org.example.mendel_challenge.transaction.service;
 import lombok.RequiredArgsConstructor;
 import org.example.mendel_challenge.transaction.domain.Transaction;
 import org.example.mendel_challenge.transaction.exceptions.TransactionAlreadyExistsException;
+import org.example.mendel_challenge.transaction.exceptions.TransactionNotFoundException;
 import org.example.mendel_challenge.transaction.repository.TransactionRepository;
 import org.springframework.stereotype.Service;
 
@@ -26,5 +27,13 @@ public class TransactionService {
 
     public Set<Long> getTransactionsByType(String type) {
         return repository.getTransactionsByType(type);
+    }
+
+    public double getTransactionsSum(long transactionId){
+        Optional<Transaction> transaction = repository.getTransactionById(transactionId);
+        if (transaction.isEmpty()) {
+            throw new TransactionNotFoundException(transactionId);
+        }
+        return repository.getTransactionsSum(transactionId);
     }
 }

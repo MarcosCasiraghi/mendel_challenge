@@ -2,6 +2,7 @@ package org.example.mendel_challenge.common;
 
 import lombok.extern.slf4j.Slf4j;
 import org.example.mendel_challenge.transaction.exceptions.TransactionAlreadyExistsException;
+import org.example.mendel_challenge.transaction.exceptions.TransactionNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -36,5 +37,11 @@ public class GlobalExceptionHandler {
     public ResponseEntity<String> handleMalformedJson(HttpMessageNotReadableException ex) {
         return ResponseEntity.badRequest().body("Malformed JSON request body.");
     }
+
+    @ExceptionHandler(TransactionNotFoundException.class)
+    public ResponseEntity<String> handleMissingTransaction(TransactionNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ex.getMessage());
+    }
+
 }
 

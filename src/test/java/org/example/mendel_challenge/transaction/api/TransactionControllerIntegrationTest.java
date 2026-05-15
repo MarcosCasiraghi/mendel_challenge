@@ -9,6 +9,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -209,11 +210,70 @@ class TransactionControllerIntegrationTest {
                 .andExpect(jsonPath("$[0]").value((int) shoppingId));
     }
 
+    @Test
+    @DisplayName("GET /transactions/sum/{id} returns the transitive sum of the subtree (spec example shape)")
+    void getSum_returnsAggregatedSum_forSpecShapedTree() throws Exception {
+        // Reproduces the spec's 10 -> 11 -> 12 example with unique ids so the test
+        // stays isolated from the shared in-memory store.
+        long rootId   = nextId();
+        long midId    = nextId();
+        long leafId   = nextId();
+        String type   = nextType("shopping");
+
+        putTransaction(rootId, 5000,  type);
+        putTransaction(midId,  10000, type, rootId);
+        putTransaction(leafId, 5000,  type, midId);
+
+        mockMvc.perform(get("/transactions/sum/{transaction_id}", rootId))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.sum").value(20000.0));
+
+        mockMvc.perform(get("/transactions/sum/{transaction_id}", midId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sum").value(15000.0));
+
+        mockMvc.perform(get("/transactions/sum/{transaction_id}", leafId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sum").value(5000.0));
+    }
+
+    @Test
+    @DisplayName("GET /transactions/sum/{id} on a node with no children returns just its own amount")
+    void getSum_returnsRootAmount_whenNoChildren() throws Exception {
+        long id = nextId();
+        String type = nextType("cars");
+
+        putTransaction(id, 750, type);
+
+        mockMvc.perform(get("/transactions/sum/{transaction_id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sum").value(750.0));
+    }
+
+    @Test
+    @DisplayName("GET /transactions/sum/{id} returns 404 when the id is not in the store")
+    void getSum_returns404_whenIdUnknown() throws Exception {
+        long id = nextId(); // never PUT
+
+        mockMvc.perform(get("/transactions/sum/{transaction_id}", id))
+                .andExpect(status().isNotFound())
+                .andExpect(content().string(containsString(String.valueOf(id))));
+    }
+
     private void putTransaction(long id, double amount, String type) throws Exception {
-        String body = objectMapper.writeValueAsString(Map.of(
-                "amount", amount,
-                "type", type
-        ));
+        putTransaction(id, amount, type, null);
+    }
+
+    private void putTransaction(long id, double amount, String type, Long parentId) throws Exception {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("amount", amount);
+        payload.put("type", type);
+        if (parentId != null) {
+            payload.put("parent_id", parentId);
+        }
+        String body = objectMapper.writeValueAsString(payload);
+
         mockMvc.perform(put("/transactions/{transaction_id}", id)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))

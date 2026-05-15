@@ -31,9 +31,11 @@ org.example.mendel_challenge
     │   ├──Transaction.java
     ├── dto
     │   ├──StatusResponse.java
+    │   ├──SumResponse.java
     │   └──TransactionRequestDTO.java
     ├── exceptions
-    │   └──TransactionAlreadyExistsException.java
+    │   ├──TransactionAlreadyExistsException.java
+    │   └──TransactionNotFoundException.java
     ├── repository
     │   ├──InMemoryTransactionRepository.java
     │   └──TransactionRepository.java
@@ -54,11 +56,19 @@ The in-memory store relies on `ConcurrentHashMap` and performs writes through `M
 
 Listing transactions by type is served from a secondary index (`Map<String, Set<Long>>`) maintained inside the repository on every successful insert. This turns `GET /transactions/types/{type}` into an O(1) map lookup instead of an O(n) scan of every stored transaction, at the cost of a small write-time bookkeeping step. The index is only updated when `putIfAbsent` actually accepts the transaction, so duplicate writes never pollute it.
 
+### Transitive sum traversal
+
+The sum endpoint needs to aggregate amounts across every transaction reachable through `parent_id` from a given root. To avoid scanning the full store on each request, a second secondary index `Map<Long, Set<Long>>` keyed by parent id, is maintained at insert time. Each entry maps a parent id to the set of its direct children. Both inner sets use `ConcurrentHashMap.newKeySet()` so concurrent inserts under the same parent are safe.
+
+`getTransactionsSum` then runs a breadth-first walk down this index starting from the requested id, summing `amount` as it visits each reachable transaction. A `visited` set guards the BFS against any accidental cycle in the parent_id graph: the model does not technically prevent a client from PUTting `A parent_id=B` together with `B parent_id=A`, so the traversal is written defensively rather than trusting the input.
+
+The endpoint throws a `TransactionDoesNotExistException` if the `transactionId` is not present in the repository store.
+
 ### DTOs separated from the domain
 
 The `Transaction` domain class is never exposed directly through the HTTP API. Inbound payloads bind to `TransactionRequest`, and the API returns a `StatusResponse` record. This decouples the wire format from the internal model, lets each side evolve independently, and keeps validation annotations off the domain class.
 
-`StatusResponse` is implemented as a Java `record`, which provides immutability and a clean serialization contract without Lombok.
+`StatusResponse` and `SumResponse` are both implemented as Java `record`s, which provide immutability and a clean serialization contract without Lombok.
 
 ### snake_case in the wire format, camelCase in the code
 
@@ -69,7 +79,7 @@ The challenge specifies snake_case for both path segments (`transaction_id`) and
 
 ### Centralized error handling
 
-Exception handlers live in a single `@RestControllerAdvice` class (`GlobalExceptionHandler`) rather than on the controller. This keeps controllers focused on request/response orchestration and guarantees consistent error responses as more endpoints are added. The advice currently handles `TransactionAlreadyExistsException` (mapped to `409 Conflict`), `MethodArgumentNotValidException` raised by Bean Validation (mapped to `400 Bad Request` with a field-level error map), and `HttpMessageNotReadableException` for malformed JSON bodies (mapped to `400 Bad Request`).
+Exception handlers live in a single `@RestControllerAdvice` class (`GlobalExceptionHandler`) rather than on the controller. This keeps controllers focused on request/response orchestration and guarantees consistent error responses as more endpoints are added. The advice currently handles `TransactionAlreadyExistsException` (mapped to `409 Conflict`), `TransactionDoesNotExistException` (mapped to `404 Not Found`), `MethodArgumentNotValidException` raised by Bean Validation (mapped to `400 Bad Request` with a field-level error map), and `HttpMessageNotReadableException` for malformed JSON bodies (mapped to `400 Bad Request`).
 
 ### Input validation
 
@@ -125,12 +135,31 @@ Response body is a JSON array of transaction ids:
 
 The type segment is treated as an exact, case-sensitive match. An unknown type returns `200 OK` with `[]` rather than `404`, which keeps the contract uniform for callers that just want to enumerate ids.
 
+### `GET /transactions/sum/{transaction_id}`
+
+Returns the transitive sum of `amount` across every transaction reachable through `parent_id` from the given root, including the root itself.
+
+Response body:
+
+```json
+{ "sum": 20000.0 }
+```
+
+| Status            | Body                | Meaning                                                |
+|-------------------|---------------------|--------------------------------------------------------|
+| `200 OK`          | `{ "sum": <double> }` | Aggregated amount for the subtree rooted at the id    |
+| `404 Not Found`   | error message       | No transaction with that id is stored                  |
+
+Unlike the by-type endpoint, an unknown id here returns `404` rather than `200` with a zero. The behaviour is centralised in the service layer (which performs the existence check) and surfaced through `TransactionDoesNotExistException` in the global handler.
+
+The amount serialises as a JSON number with a fractional part (e.g. `20000.0`), since the field is typed as `double`. This is numerically equivalent to the spec's `{"sum":20000}` example.
+
 ## Testing
 
 The project ships with two layers of tests:
 
-- **Unit tests** — `TransactionServiceTest` mocks the repository with Mockito to validate the service behaviour in isolation, covering save success, the duplicate-id failure path, delegation of `getTransactionsByType`, and the empty-match case. `InMemoryTransactionRepositoryTest` exercises the repository directly with plain JUnit: insertion semantics, duplicate-id handling, returning every id for a given type, isolation between types, case sensitivity of the type key, and the guarantee that a rejected duplicate does not leak into the type index.
-- **Integration tests** — `TransactionControllerIntegrationTest` uses `@SpringBootTest` + `MockMvc` to exercise both endpoints end-to-end. `PUT /transactions/{transaction_id}` is covered for the happy path, duplicate id, missing required fields, optional `parent_id`, snake_case mapping, and malformed JSON. `GET /transactions/types/{type}` is covered for the multi-id happy path, the empty-result case, type isolation across two coexisting types, and the literal example from the spec (`PUT /transactions/10 { "amount": 5000, "type": "cars" }` → `GET /transactions/types/cars` ⇒ `[10]`). Because the in-memory repository bean is shared across the Spring context, tests draw ids and types from atomic counters to stay isolated from each other.
+- **Unit tests** — `TransactionServiceTest` mocks the repository with Mockito to validate the service behaviour in isolation: save success, the duplicate-id failure path, delegation of `getTransactionsByType` (both populated and empty cases), the sum happy path, and the assertion that a missing root id produces `TransactionDoesNotExistException` without ever calling `getTransactionsSum` on the repository. `InMemoryTransactionRepositoryTest` exercises the repository directly with plain JUnit: insertion semantics, duplicate-id handling, type-index correctness and case sensitivity, `getTransactionById` round-trip, the spec's three-node `10 → 11 → 12` sum example, a wider multi-branch subtree, leaf sums, the repository-level "missing root returns 0" contract, and a synthetic parent_id cycle that proves the BFS terminates (asserted with `assertTimeoutPreemptively`).
+- **Integration tests** — `TransactionControllerIntegrationTest` uses `@SpringBootTest` + `MockMvc` to exercise all three endpoints end-to-end. `PUT /transactions/{transaction_id}` is covered for the happy path, duplicate id, missing required fields, optional `parent_id`, snake_case mapping, and malformed JSON. `GET /transactions/types/{type}` is covered for the multi-id happy path, the empty-result case, and type isolation across two coexisting types. `GET /transactions/sum/{transaction_id}` is covered for a spec-shaped three-node tree (asserting the sum at root, middle, and leaf), a node with no children, and the `404` response on an unknown id. Because the in-memory repository bean is shared across the Spring context, tests draw ids and types from atomic counters to stay isolated from each other.
 
 Run the full suite with:
 
