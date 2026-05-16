@@ -1,0 +1,27 @@
+# Build output - rebuilt inside the image, never copy host artifacts.
+target/
+
+# VCS and IDE noise - not needed at build time, hurts cache and image size.
+.git/
+.gitignore
+.gitattributes
+.idea/
+.vscode/
+*.iml
+
+# Documentation and assets that are not part of the runtime artifact.
+*.md
+*.pdf
+HELP.md
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Local environment overrides
+.env
+.env.*
+
+# Docker files themselves don't need to be in the build context.
+Dockerfile
+.dockerignore

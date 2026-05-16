@@ -2,7 +2,7 @@ package org.example.mendel_challenge.transaction.service;
 
 import org.example.mendel_challenge.transaction.domain.Transaction;
 import org.example.mendel_challenge.transaction.exceptions.TransactionAlreadyExistsException;
-import org.example.mendel_challenge.transaction.exceptions.TransactionDoesNotExistException;
+import org.example.mendel_challenge.transaction.exceptions.TransactionNotFoundException;
 import org.example.mendel_challenge.transaction.repository.TransactionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -107,12 +107,12 @@ class TransactionServiceTest {
     }
 
     @Test
-    @DisplayName("getTransactionsSum() throws TransactionDoesNotExistException when the root id is unknown")
+    @DisplayName("getTransactionsSum() throws TransactionNotFoundException when the root id is unknown")
     void getTransactionsSum_throws_whenRootDoesNotExist() {
         when(repository.getTransactionById(9999L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> transactionService.getTransactionsSum(9999L))
-                .isInstanceOf(TransactionDoesNotExistException.class)
+                .isInstanceOf(TransactionNotFoundException.class)
                 .hasMessageContaining("9999");
 
         verify(repository).getTransactionById(9999L);

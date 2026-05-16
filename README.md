@@ -167,4 +167,23 @@ Run the full suite with:
 ./mvnw test
 ```
 
+## Docker
+
+The service ships with a multi-stage `Dockerfile`. Build and run the production image with:
+
+```bash
+docker build -t mendel-challenge:latest .
+```
+```bash
+docker run --rm -p 8080:8080 mendel-challenge:latest
+```
+
+Run the test suite inside a container, without needing Maven or a JDK on the host:
+
+```bash
+docker build --target test --progress=plain .
+```
+
+The full rationale for the multi-stage layout, the JDK-vs-JRE split, the non-root user, and why there is no separate `Dockerfile.test` is documented in [DOCKER.md](./DOCKER.md).
+
 

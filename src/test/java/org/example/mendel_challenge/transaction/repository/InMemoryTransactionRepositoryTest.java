@@ -175,7 +175,7 @@ class InMemoryTransactionRepositoryTest {
     @DisplayName("getTransactionsSum() returns 0 when the root id is not in the store")
     void getTransactionsSum_returnsZero_whenRootMissing() {
         // The repository itself returns 0 for an unknown root; the service is the
-        // layer that converts this into TransactionDoesNotExistException.
+        // layer that converts this into TransactionNotFoundException.
         double sum = repository.getTransactionsSum(9999L);
 
         assertThat(sum).isEqualTo(0.0);
